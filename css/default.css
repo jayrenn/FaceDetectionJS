@@ -1,0 +1,10 @@
+﻿#video {
+    position: relative;
+    width: 640px;
+    height: 480px;
+}
+
+.facebox {
+    border: 3px solid red;
+    position: absolute;
+}
