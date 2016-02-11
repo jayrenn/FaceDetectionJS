@@ -1,6 +1,7 @@
 (function () {
     "use strict";
 
+    var mirroring = true;
     var mediaCapture;
     var Capture = Windows.Media.Capture;
     var DeviceEnumeration = Windows.Devices.Enumeration;
@@ -11,14 +12,15 @@
     var faceboxColors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6", "#e67e22"];
 
     function createFacebox(face, num) {
+        var video = document.getElementById("video");
         var facebox = document.createElement("div");
         facebox.style.width = face.width + "px";
         facebox.style.height = face.height + "px";
         facebox.style.top = face.y + "px";
-        facebox.style.left = face.x + "px";
+        facebox.style.left = mirroring ? (parseInt(video.offsetWidth) - face.x - face.width) + "px" : face.x + "px";
         facebox.style.borderColor = faceboxColors[num % faceboxColors.length];
         facebox.classList.add("facebox");
-        document.getElementById("video").appendChild(facebox);
+        video.appendChild(facebox);
     }
 
     function findCameraDeviceByPanelAsync(panel) {
@@ -50,6 +52,12 @@
                 createFacebox(face, i);
             }
         }
+    }
+
+    function mirrorPreview() {
+        var props = mediaCapture.videoDeviceController.getMediaStreamProperties(Capture.MediaStreamType.videoPreview);
+        props.properties.insert("C380465D-2271-428C-9B83-ECEA3B4A85C1", 0);
+        return mediaCapture.setEncodingPropertiesAsync(Capture.MediaStreamType.videoPreview, props, null);
     }
 
     function removeAllFaceboxes() {
@@ -84,6 +92,12 @@
 
                     displayRequest.requestActive();
                     var preview = document.getElementById("cameraPreview");
+
+                    if (mirroring) {
+                        preview.style.transform = "scale(-1, 1)";
+                        preview.addEventListener("playing", mirrorPreview);
+                    }
+
                     var previewUrl = URL.createObjectURL(mediaCapture);
                     preview.src = previewUrl;
                     preview.play();
