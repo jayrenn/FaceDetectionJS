@@ -10,18 +10,7 @@
     var captureSettings = new Capture.MediaCaptureInitializationSettings;
     var displayRequest = new Windows.System.Display.DisplayRequest();
     var faceboxColors = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6", "#e67e22"];
-
-    function createFacebox(face, num) {
-        var video = document.getElementById("video");
-        var facebox = document.createElement("div");
-        facebox.style.width = face.width + "px";
-        facebox.style.height = face.height + "px";
-        facebox.style.top = face.y + "px";
-        facebox.style.left = mirroring ? (parseInt(video.offsetWidth) - face.x - face.width) + "px" : face.x + "px";
-        facebox.style.borderColor = faceboxColors[num % faceboxColors.length];
-        facebox.classList.add("facebox");
-        video.appendChild(facebox);
-    }
+    var facesCanvas, video;
 
     function findCameraDeviceByPanelAsync(panel) {
         var deviceInfo;
@@ -34,22 +23,28 @@
                     }
                 });
 
-                if (!deviceInfo && devices.length > 0) {
-                    deviceInfo = devices.getAt(0);
-                }
-
-                return deviceInfo;
+                return !deviceInfo && devices.length > 0 ? devices.getAt(0) : deviceInfo;
             }
         );
     }
 
     function handleFaces(args) {
-        removeAllFaceboxes();
+        var context = facesCanvas.getContext("2d");
+        context.clearRect(0, 0, facesCanvas.width, facesCanvas.height);
         var detectedFaces = args.resultFrame.detectedFaces;
         if (detectedFaces.length > 0) {
             for (var i = 0; i < detectedFaces.length; i++) {
                 var face = detectedFaces.getAt(i).faceBox;
-                createFacebox(face, i);
+                context.beginPath();
+                context.rect(face.x, face.y, face.width, face.height);
+                context.lineWidth = 3;
+                context.strokeStyle = faceboxColors[i % faceboxColors.length];
+                context.stroke();
+                context.closePath();
+
+                if (mirroring) {
+                    facesCanvas.style.transform = "scale(-1, 1)";
+                }
             }
         }
     }
@@ -60,52 +55,54 @@
         return mediaCapture.setEncodingPropertiesAsync(Capture.MediaStreamType.videoPreview, props, null);
     }
 
-    function removeAllFaceboxes() {
-        var faceboxes = document.querySelectorAll(".facebox");
-        for (var i = faceboxes.length - 1; i >= 0; i--) {
-            if (faceboxes[i].parentNode) {
-                faceboxes[i].parentNode.removeChild(faceboxes[i]);
+    function init() {
+        facesCanvas = document.getElementById("facesCanvas");
+        video = document.getElementById("video");
+
+        facesCanvas.width = video.offsetWidth;
+        facesCanvas.height = video.offsetHeight;
+
+        findCameraDeviceByPanelAsync(DeviceEnumeration.Panel.back).then(
+            function (camera) {
+                if (camera === null) {
+                    console.error("No camera device found!");
+                    return;
+                }
+
+                mediaCapture = new Capture.MediaCapture();
+                captureSettings.videoDeviceId = camera.id;
+                captureSettings.streamingCaptureMode = Capture.StreamingCaptureMode.video;
+                mediaCapture.initializeAsync(captureSettings).then(
+                    function fulfilled(result) {
+                        mediaCapture.addVideoEffectAsync(effectDefinition, mediaStreamType).done(
+                            function complete(result) {
+                                result.addEventListener("facedetected", handleFaces);
+                                result.desiredDetectionInterval = 33;
+                            },
+                            function error(e) {
+                                console.error("Error: " + e);
+                            }
+                        );
+
+                        displayRequest.requestActive();
+                        var preview = document.getElementById("cameraPreview");
+
+                        if (mirroring) {
+                            preview.style.transform = "scale(-1, 1)";
+                            preview.addEventListener("playing", mirrorPreview);
+                        }
+
+                        var previewUrl = URL.createObjectURL(mediaCapture);
+                        preview.src = previewUrl;
+                        preview.play();
+                    },
+                    function error(e) {
+                        console.error("Error: " + e);
+                    }
+                );
             }
-        }
+        );
     }
 
-    findCameraDeviceByPanelAsync(DeviceEnumeration.Panel.back).then(
-        function (camera) {
-            if (camera === null) {
-                console.error("No camera device found!");
-                return;
-            }
-
-            mediaCapture = new Capture.MediaCapture();
-            captureSettings.videoDeviceId = camera.id;
-            captureSettings.streamingCaptureMode = Capture.StreamingCaptureMode.video;
-            mediaCapture.initializeAsync(captureSettings).then(
-                function fulfilled(result) {
-                    mediaCapture.addVideoEffectAsync(effectDefinition, mediaStreamType).done(
-                        function complete(result) {
-                            result.addEventListener("facedetected", handleFaces);
-                        },
-                        function error(e) {
-                            console.error("Error: " + e);
-                        }
-                    );
-
-                    displayRequest.requestActive();
-                    var preview = document.getElementById("cameraPreview");
-
-                    if (mirroring) {
-                        preview.style.transform = "scale(-1, 1)";
-                        preview.addEventListener("playing", mirrorPreview);
-                    }
-
-                    var previewUrl = URL.createObjectURL(mediaCapture);
-                    preview.src = previewUrl;
-                    preview.play();
-                },
-                function error(e) {
-                    console.error("Error: " + e);
-                }
-            );
-        }
-    );
+    document.addEventListener("DOMContentLoaded", init);
 })();
